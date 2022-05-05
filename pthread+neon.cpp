@@ -91,6 +91,7 @@ void* threadFunc(void* param)
     int worknum2 = E / NUM_THREAD;
     int begin_index2 = tid * worknum2;
     int end_index2 = (tid + 1) * worknum2;
+    Point tepp[K];
     float32x4_t res, t1, t2;
     if (tid == NUM_THREAD - 1)
     {
@@ -105,6 +106,7 @@ void* threadFunc(void* param)
             for (int n = begin_index2; n < end_index2; ++n)
             {
                 tep[m].elements[n] = 0;
+                tepp[m].elements[n] = 0;
             }
         }
 
@@ -123,18 +125,30 @@ void* threadFunc(void* param)
                 t1 = vld1q_f32(temp->elements + m);
                 t2 = vld1q_f32(temp2->elements + m);
                 t1 = vaddq_f32(t1, t2);
-                vst1q_f32(temp->elements + m, t1);
+                vst1q_f32(tepp[center[j]].elements + m, t1);
             }
             for (int m = (E % 4) - 1; m >= 0; --m)
             {
 
-                temp->elements[m] += temp2->elements[m];
+                tepp[center[j]].elements[m] += temp2->elements[m];
 
             }
         }
         pthread_barrier_wait(&barrier_sum);
         //=================================================
-
+       
+        for (int i = 0; i < K; i++)
+        {
+            for (int m = 0; m < E; m++)
+            {
+                pthread_mutex_lock(&amutex);
+                tep[i].elements[E] += tepp[i].elements[E];
+                pthread_mutex_unlock(&amutex);
+            }
+        }
+      
+        pthread_barrier_wait(&barrier_1);
+        //=================================================
         for (int i = 0; i < K; i++)
         {
             for (int m = begin_index2; m < end_index2; ++m)

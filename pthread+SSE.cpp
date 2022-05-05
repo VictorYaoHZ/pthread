@@ -13,7 +13,8 @@ using namespace std;
 #define N 2048//点的个数
 #define K 8//聚类的个数
 #define E 256//元素的个数
-#define NUM_THREAD 6
+#define NUM_THREAD 8
+
 typedef struct
 {
 	float elements[E];
@@ -23,7 +24,7 @@ Point mean[K];  ///  保存每个簇的中心点
 int count1[K];
 int center[N];  ///  判断每个点属于哪个簇 center[k]=p，即第k个point位于第p聚类
 
-pthread_barrier_t	barrier1;
+
 Point point[N];
 float minn;
 /*
@@ -78,6 +79,7 @@ pthread_barrier_t barrier_reset;
 pthread_barrier_t barrier_sum;
 pthread_barrier_t barrier_avr;
 pthread_barrier_t barrier_cluster;
+pthread_barrier_t barrier_1;
 pthread_mutex_t amutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct{
@@ -93,6 +95,7 @@ void* threadFunc(void* param)
     int worknum2 = E / NUM_THREAD;
     int begin_index2 = tid * worknum2;
     int end_index2 = (tid + 1) * worknum2;
+    Point tepp[K];
     __m128 res, t1, t2;
     if (tid == NUM_THREAD - 1)
     {
@@ -107,6 +110,7 @@ void* threadFunc(void* param)
             for (int n = begin_index2; n < end_index2; ++n)
             {
                 tep[m].elements[n] = 0;
+                tepp[m].elements[n] = 0;
             }
         }
 
@@ -126,16 +130,27 @@ void* threadFunc(void* param)
                 t1 = _mm_loadu_ps(temp->elements + m);
                 t2 = _mm_loadu_ps(temp2->elements + m);
                 t1 = _mm_add_ps(t1, t2);
-                _mm_storeu_ps(temp->elements + m, t1);
+                _mm_storeu_ps(tepp[center[j]].elements + m, t1);
             }
             for (int m = (E % 4) - 1; m >= 0; --m)
             {
 
-                temp->elements[m] += temp2->elements[m];
-
+                tepp[center[j]].elements[m] += temp2->elements[m];
             }
         }
         pthread_barrier_wait(&barrier_sum);
+        //===================================================
+       
+        for(int i=0;i<K;i++)
+        {
+            for(int m=0;m<E;m++)
+            {
+                pthread_mutex_lock(&amutex);
+                tep[i].elements[E]+=tepp[i].elements[E];
+                pthread_mutex_unlock(&amutex);
+            }
+        }
+        pthread_barrier_wait(&barrier_1);
         //=================================================
 
         for (int i = 0; i < K; i++)
@@ -373,6 +388,7 @@ void kmeans_pthread()
     pthread_barrier_init(&barrier_sum,NULL,NUM_THREAD);
     pthread_barrier_init(&barrier_avr,NULL,NUM_THREAD);
     pthread_barrier_init(&barrier_cluster,NULL,NUM_THREAD);
+    pthread_barrier_init(&barrier_1,NULL,NUM_THREAD);
     pthread_t thread_handles[NUM_THREAD];
     threadParam_t threadParam[NUM_THREAD];
     for (int tid = 0; tid < NUM_THREAD; tid++)
@@ -391,6 +407,7 @@ void kmeans_pthread()
     pthread_barrier_destroy(&barrier_sum);
     pthread_barrier_destroy(&barrier_avr);
     pthread_barrier_destroy(&barrier_cluster);
+    pthread_barrier_destroy(&barrier_1);
     pthread_mutex_destroy(&amutex);
 }
 void kmeans_helper_pthread()
